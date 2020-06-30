@@ -17,7 +17,7 @@ def index(request):
 
 
 async def init(loop):
-    app = web.Application(loop=loop)
+    app = web.Application()
     app.router.add_route('GET', '/', index)
     runner = web.AppRunner(app)
     await runner.setup()
