@@ -7,6 +7,8 @@ import asyncio
 import logging
 import aiomysql
 
+logging.basicConfig(level=logging.DEBUG)
+
 
 def log(sql, args=()):
     logging.info('SQL:%s' % sql)
@@ -18,11 +20,11 @@ async def create_pool(loop, **kw):
     global __pool
     __pool = await aiomysql.create_pool(
         host=kw.get('host', '127.0.0.1'),
-        port=kw.get('port', '3306'),
-        user=kw.get('user'),
-        password=kw.get('password'),
-        db=kw.get('db'),
-        charset=kw.get('charset', 'utf-8'),
+        port=kw.get('port', 3306),
+        user=kw['user'],
+        password=kw['password'],
+        db=kw['db'],
+        charset=kw.get('charset', 'utf8'),
         autocommit=kw.get('autocommit', True),
         maxsize=kw.get('maxsize', 10),
         minsize=kw.get('minsize', 1),
@@ -41,7 +43,7 @@ async def select(sql, args, size=None):
                 rs = await cur.fetchmany(size)
             else:
                 rs = await cur.fetchall()
-        logging.info('row returnd:%s' % len(rs))
+        logging.info('row return : %s' % len(rs))
     return rs
 
 
@@ -54,7 +56,7 @@ async def execute(sql, args, autocommit=True):
         try:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(sql.replace('?', '%s'), args)
-                affected = cur.rowCount
+                affected = cur.rowcount
             if not autocommit:
                 await conn.commit()
         except BaseException as e:
@@ -120,12 +122,14 @@ class ModelMetaClass(type):
             if isinstance(v, Field):
                 logging.info(' found mapping: %s ==> %s' % (k, v))
                 mappings[k] = v
-                if v.primaryKey:
+                if v.primary_key:
                     if primaryKey:
-                        raise StandardError('Duplicate primary key for field: %s ' % k)
+                        raise StandardError(
+                            'Duplicate primary key for field: %s ' % k)
                     primaryKey = k
                 else:
                     fields.append(k)
+
         if not primaryKey:
             raise StandardError('Primary key not found.')
         for k in mappings.keys():
@@ -221,23 +225,24 @@ class Model(dict, metaclass=ModelMetaClass):
             return None
         return cls(**rs[0])
 
-
     async def save(self):
-        args = list(map(self.getValueOrDefault,self.__fields__))
-        args.append(self.getValueOrDefault(self.__primary_key__))
-        row = await execute(self.__insert__,args)
-        if row != 1:
-            logging.warn('failed to insert record；affected rows: %s' % rows)
-    
-    async def update(self):
-        args = list(map(self.getValue,self.__fields__))
-        args.append(self.getValue(self.__primary_key__))
-        rows = await execute(self.__update__,args)
+        args = list(map(self.getValueOrDefault, self.__fields__))
+        args.insert(0, self.getValueOrDefault(self.__primary_key__))
+        rows = await execute(self.__insert__, args)
         if rows != 1:
-            logging.warn('failed to update by primary key; affected rows: %s' % rows)
+            logging.warn('failed to insert record；affected rows: %s' % rows)
+
+    async def update(self):
+        args = list(map(self.getValue, self.__fields__))
+        args.insert(0, self.getValue(self.__primary_key__))
+        rows = await execute(self.__update__, args)
+        if rows != 1:
+            logging.warn(
+                'failed to update by primary key; affected rows: %s' % rows)
 
     async def remove(self):
         args = [self.getValue(self.__primary_key__)]
-        rows = await execute(self.__delete__,args)
+        rows = await execute(self.__delete__, args)
         if rows != 1:
-            logging.warn('failed to remove by primary key;affected rows: %s' % rows)
+            logging.warn(
+                'failed to remove by primary key;affected rows: %s' % rows)
